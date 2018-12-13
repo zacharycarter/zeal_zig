@@ -1,4 +1,5 @@
 const std = @import("std");
+const bgfx = @import("bgfx.zig");
 const sdl = @import("sdl.zig");
 const event = @import("event.zig");
 const input = @import("input.zig");
@@ -6,8 +7,12 @@ const input = @import("input.zig");
 const ZealErrors = error {
     SDLInitError,
     SDLWindowCreationError,
+    SDLWindowManagerInfoError,
+    BGFXInitError,
 };
 
+const QUIT_FAILURE = 1;
+const QUIT_SUCCESS = 0;
 const SDL_WINDOWPOS_UNDEFINED = @bitCast(c_int, sdl.SDL_WINDOWPOS_UNDEFINED_MASK);
 
 var window: ?*sdl.SDL_Window = null;
@@ -33,6 +38,45 @@ fn init() !void {
         sdl.SDL_Log(c"unable to create sdl window: %s", sdl.SDL_GetError());
         return ZealErrors.SDLWindowCreationError;
     };
+
+    var pd: bgfx.bgfx_platform_data_t = bgfx.bgfx_platform_data_t {
+        .ndt = null,
+        .nwh = null,
+        .context = null,
+        .backBuffer = null,
+        .backBufferDS = null,
+        .session = null,
+    };
+
+    var windowWMInfo: sdl.SDL_SysWMinfo = undefined;
+
+    sdl.SDL_VERSION(&windowWMInfo.version);
+
+    if (sdl.SDL_GetWindowWMInfo(window, @ptrCast([*]sdl.SDL_SysWMinfo, &windowWMInfo)) == sdl.SDL_bool.SDL_FALSE) {
+        sdl.SDL_Log(c"unable to retrieve window information from window manager: %s", sdl.SDL_GetError());
+        return ZealErrors.SDLWindowManagerInfoError;
+    }
+
+    var platform_data: bgfx.bgfx_platform_data_t = undefined;
+    if (bgfx.BX_PLATFORM_OSX != 0) {
+        platform_data.ndt = null;
+        platform_data.nwh = windowWMInfo.info.cocoa.window;
+    }
+
+    bgfx.bgfx_set_platform_data(@ptrCast([*]bgfx.bgfx_platform_data_t, &pd));
+
+    if (sdl.SDL_Init(sdl.SDL_INIT_VIDEO) != 0) {
+        std.debug.warn("unable to initialize sdl: {s}", sdl.SDL_GetError());
+        return ZealErrors.SDLInitError;
+    }
+
+    var bgfx_init: bgfx.bgfx_init_t = undefined;
+    bgfx.bgfx_init_ctor(@ptrCast([*]bgfx.bgfx_init_t, &bgfx_init));
+    
+    if (!bgfx.bgfx_init(@ptrCast([*]bgfx.bgfx_init_t, &bgfx_init))) {
+        std.debug.warn("unable to initialize bgfx");
+        return ZealErrors.BGFXInitError;
+    }
 }
 
 fn pollEvent() ?event.Event {
@@ -46,24 +90,35 @@ fn pollEvent() ?event.Event {
 }
 
 fn shutdown() void {
+    bgfx.bgfx_shutdown();
     if (window) |win| {
         sdl.SDL_DestroyWindow(win);
     }
     sdl.SDL_Quit();
 }
 
-pub fn main() void {
+pub fn main() u8 {
     var quit = false;
 
     init() catch |err| {
         switch (err) {
             ZealErrors.SDLInitError => {
-                return;
+                
+            },
+            ZealErrors.SDLWindowCreationError => {
+                sdl.SDL_Quit();
+            },
+            ZealErrors.SDLWindowManagerInfoError => {
+                if (window) |win| {
+                    sdl.SDL_DestroyWindow(win);
+                }
+                sdl.SDL_Quit();
             },
             else => {
-                quit = true;
+                defer shutdown();
             }
         }
+        return QUIT_FAILURE;
     };
 
     while (!quit) {
@@ -78,4 +133,5 @@ pub fn main() void {
     }
 
     shutdown();
+    return QUIT_SUCCESS;
 }

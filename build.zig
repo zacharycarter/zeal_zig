@@ -3,7 +3,9 @@ const Builder = @import("std").build.Builder;
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
     const exe = b.addExecutable("zeal", "src/main.zig");
+    exe.addIncludeDir("/usr/local/include/bx");
     exe.linkSystemLibrary("SDL2");
+    exe.linkSystemLibrary("bgfx-shared-libDebug");
     exe.setBuildMode(mode);
 
     const run_step = b.step("run", "Run the app");
