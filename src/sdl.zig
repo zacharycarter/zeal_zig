@@ -16,3 +16,5 @@ pub inline fn SDL_VERSION(version: *SDL_version) void {
     version.minor = c.SDL_MINOR_VERSION;
     version.patch = c.SDL_PATCHLEVEL;
 }
+
+pub const SDL_WINDOWPOS_UNDEFINED = @bitCast(c_int, c.SDL_WINDOWPOS_UNDEFINED_MASK);

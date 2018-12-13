@@ -13,7 +13,6 @@ const ZealErrors = error {
 
 const QUIT_FAILURE = 1;
 const QUIT_SUCCESS = 0;
-const SDL_WINDOWPOS_UNDEFINED = @bitCast(c_int, sdl.SDL_WINDOWPOS_UNDEFINED_MASK);
 
 var window: ?*sdl.SDL_Window = null;
 
@@ -29,8 +28,8 @@ fn init() !void {
 
     window = sdl.SDL_CreateWindow(
         c"zeal",
-        SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED,
+        sdl.SDL_WINDOWPOS_UNDEFINED,
+        sdl.SDL_WINDOWPOS_UNDEFINED,
         @intCast(c_int, 800),
         @intCast(c_int, 600),
         sdl.SDL_WINDOW_SHOWN,
