@@ -6,6 +6,7 @@ pub fn build(b: *Builder) void {
     exe.addIncludeDir("/usr/local/include/bx");
     exe.linkSystemLibrary("csfml-window");
     exe.linkSystemLibrary("csfml-network");
+    exe.linkSystemLibrary("csfml-system");
     exe.linkSystemLibrary("bgfx-shared-libDebug");
     exe.linkSystemLibrary("c");
     exe.setBuildMode(mode);

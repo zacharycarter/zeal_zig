@@ -5,18 +5,10 @@ const sfml = @cImport({
 });
 
 const std = @import("std");
+const defines = @import("defines.zig");
 const bgfx = @import("bgfx.zig");
-const input = @import("input.zig");
+const ZealErrors = @import("error.zig").ZealErrors;
 const console_server = @import("console_server.zig");
-
-const ZealErrors = error {
-    SFMLWindowCreationError,
-    BGFXInitError,
-    ConsoleServerInitError,
-};
-
-const QUIT_FAILURE = 1;
-const QUIT_SUCCESS = 0;
 
 const DeviceOptions = struct {
     foo: u8,
@@ -29,25 +21,22 @@ const MainThreadArgs = struct {
 
 var window: ?*sfml.sfWindow = undefined;
 
-fn start1(ctx: void) u8 {
-    return 0;
+fn run(ctx: void) u8 {
+    var exit_code = console_server.init();
+
+    return exit_code;
 }
 
 fn init() !void {
-    // const main_thread_args = MainThreadArgs{ .device_options = &DeviceOptions{ .foo = 1, .bar = "bar" } };
-    // const main_thread = try std.os.spawnThread({}, start1);
-    // main_thread.wait();
+    const main_thread_args = MainThreadArgs{ .device_options = &DeviceOptions{ .foo = 1, .bar = "bar" } };
+    const main_thread = try std.os.spawnThread({}, run);
+    main_thread.wait();
 
     window = sfml.sfWindow_create(sfml.sfVideoMode{ .width = 800, .height = 600, .bitsPerPixel = 32 }, c"zeal", sfml.sfDefaultStyle, null);
     if (window == null) {
         std.debug.warn("unable to create sfml window");
         return ZealErrors.SFMLWindowCreationError;
     }
-
-    // console_server.init() catch |err| {
-    //     std.debug.warn("unable to initialize sdl: {s}", err);
-    //     return ZealErrors.ConsoleServerInitError;
-    // };
 
     const system_window_handle = sfml.sfWindow_getSystemHandle(window);
 
@@ -101,7 +90,7 @@ pub fn main() u8 {
                 shutdown();
             }
         }
-        return QUIT_FAILURE;
+        return defines.QUIT_FAILURE;
     };
 
     while (sfml.sfWindow_isOpen(window) > 0) {
@@ -109,5 +98,5 @@ pub fn main() u8 {
     }
 
     shutdown();
-    return QUIT_SUCCESS;
+    return defines.QUIT_SUCCESS;
 }
