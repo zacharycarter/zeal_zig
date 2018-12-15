@@ -1,73 +1,63 @@
+const sfml = @cImport({
+    // See https://github.com/zig-lang/zig/issues/515
+    @cDefine("_NO_CRT_STDIO_INLINE", "1");
+    @cInclude("SFML/Window.h");
+});
+
 const std = @import("std");
 const bgfx = @import("bgfx.zig");
-const sdl = @import("sdl.zig");
-const event = @import("event.zig");
 const input = @import("input.zig");
+const console_server = @import("console_server.zig");
 
 const ZealErrors = error {
-    SDLInitError,
-    SDLWindowCreationError,
-    SDLWindowManagerInfoError,
+    SFMLWindowCreationError,
     BGFXInitError,
+    ConsoleServerInitError,
 };
 
 const QUIT_FAILURE = 1;
 const QUIT_SUCCESS = 0;
 
-var window: ?*sdl.SDL_Window = null;
+const DeviceOptions = struct {
+    foo: u8,
+    bar: []const u8,
+};
+
+const MainThreadArgs = struct {
+    device_options: *DeviceOptions,
+};
+
+var window: ?*sfml.sfWindow = undefined;
+
+fn start1(ctx: void) u8 {
+    return 0;
+}
 
 fn init() !void {
-    if (sdl.SDL_Init(sdl.SDL_INIT_VIDEO) != 0) {
-        std.debug.warn("unable to initialize sdl: {s}", sdl.SDL_GetError());
-        return ZealErrors.SDLInitError;
+    // const main_thread_args = MainThreadArgs{ .device_options = &DeviceOptions{ .foo = 1, .bar = "bar" } };
+    // const main_thread = try std.os.spawnThread({}, start1);
+    // main_thread.wait();
+
+    window = sfml.sfWindow_create(sfml.sfVideoMode{ .width = 800, .height = 600, .bitsPerPixel = 32 }, c"zeal", sfml.sfDefaultStyle, null);
+    if (window == null) {
+        std.debug.warn("unable to create sfml window");
+        return ZealErrors.SFMLWindowCreationError;
     }
 
-    var sdl_version = sdl.SDL_version {.major = 0, .minor = 0, .patch = 0};
-    sdl.SDL_GetVersion(@ptrCast([*]sdl.SDL_version, &sdl_version));
-    sdl.SDL_Log(c"sdl version %d.%d.%d initialized", sdl_version.major, sdl_version.minor, sdl_version.patch);
+    // console_server.init() catch |err| {
+    //     std.debug.warn("unable to initialize sdl: {s}", err);
+    //     return ZealErrors.ConsoleServerInitError;
+    // };
 
-    window = sdl.SDL_CreateWindow(
-        c"zeal",
-        sdl.SDL_WINDOWPOS_UNDEFINED,
-        sdl.SDL_WINDOWPOS_UNDEFINED,
-        @intCast(c_int, 800),
-        @intCast(c_int, 600),
-        sdl.SDL_WINDOW_SHOWN,
-    ) orelse {
-        sdl.SDL_Log(c"unable to create sdl window: %s", sdl.SDL_GetError());
-        return ZealErrors.SDLWindowCreationError;
-    };
-
-    var pd: bgfx.bgfx_platform_data_t = bgfx.bgfx_platform_data_t {
-        .ndt = null,
-        .nwh = null,
-        .context = null,
-        .backBuffer = null,
-        .backBufferDS = null,
-        .session = null,
-    };
-
-    var windowWMInfo: sdl.SDL_SysWMinfo = undefined;
-
-    sdl.SDL_VERSION(&windowWMInfo.version);
-
-    if (sdl.SDL_GetWindowWMInfo(window, @ptrCast([*]sdl.SDL_SysWMinfo, &windowWMInfo)) == sdl.SDL_bool.SDL_FALSE) {
-        sdl.SDL_Log(c"unable to retrieve window information from window manager: %s", sdl.SDL_GetError());
-        return ZealErrors.SDLWindowManagerInfoError;
-    }
+    const system_window_handle = sfml.sfWindow_getSystemHandle(window);
 
     var platform_data: bgfx.bgfx_platform_data_t = undefined;
     if (bgfx.BX_PLATFORM_OSX != 0) {
         platform_data.ndt = null;
-        platform_data.nwh = windowWMInfo.info.cocoa.window;
+        platform_data.nwh = system_window_handle;
     }
 
-    bgfx.bgfx_set_platform_data(@ptrCast([*]bgfx.bgfx_platform_data_t, &pd));
-
-    if (sdl.SDL_Init(sdl.SDL_INIT_VIDEO) != 0) {
-        std.debug.warn("unable to initialize sdl: {s}", sdl.SDL_GetError());
-        return ZealErrors.SDLInitError;
-    }
+    bgfx.bgfx_set_platform_data(@ptrCast([*]bgfx.bgfx_platform_data_t, &platform_data));
 
     var bgfx_init: bgfx.bgfx_init_t = undefined;
     bgfx.bgfx_init_ctor(@ptrCast([*]bgfx.bgfx_init_t, &bgfx_init));
@@ -78,22 +68,20 @@ fn init() !void {
     }
 }
 
-fn pollEvent() ?event.Event {
-    var sdl_event: sdl.SDL_Event = undefined;
-
-    if (sdl.SDL_PollEvent(@ptrCast([*]sdl.SDL_Event, &sdl_event)) == 0) {
-        return null;
+fn pollEvent() void {
+    var ev: sfml.sfEvent = undefined;
+    while (sfml.sfWindow_pollEvent(window, @ptrCast([*]sfml.sfEvent, &ev)) > 0) {
+        if (@enumToInt(ev.type) == sfml.sfEvtClosed) {
+            sfml.sfWindow_close(window);
+        }
     }
-
-    return event.mapSDLEvent(sdl_event);
 }
 
 fn shutdown() void {
     bgfx.bgfx_shutdown();
     if (window) |win| {
-        sdl.SDL_DestroyWindow(win);
+        sfml.sfWindow_destroy(window);
     }
-    sdl.SDL_Quit();
 }
 
 pub fn main() u8 {
@@ -101,34 +89,23 @@ pub fn main() u8 {
 
     init() catch |err| {
         switch (err) {
-            ZealErrors.SDLInitError => {
+            ZealErrors.SFMLWindowCreationError => {
                 
             },
-            ZealErrors.SDLWindowCreationError => {
-                sdl.SDL_Quit();
-            },
-            ZealErrors.SDLWindowManagerInfoError => {
+            ZealErrors.BGFXInitError => {
                 if (window) |win| {
-                    sdl.SDL_DestroyWindow(win);
+                    sfml.sfWindow_destroy(window);
                 }
-                sdl.SDL_Quit();
             },
             else => {
-                defer shutdown();
+                shutdown();
             }
         }
         return QUIT_FAILURE;
     };
 
-    while (!quit) {
-        while (pollEvent()) |ev| {
-            switch (ev) {
-                event.Event.Quit => {
-                    quit = true;
-                },
-                else => {},
-            }
-        }
+    while (sfml.sfWindow_isOpen(window) > 0) {
+        pollEvent();
     }
 
     shutdown();
